@@ -25,7 +25,7 @@ const (
 	SP
 	PC
 	TICK
-	regSize = iota // number of registers (for sizing register slice)
+	regSize = iota // number of exported registers
 )
 
 // DCPU16 is a single virtual CPU that conforms to the 0x10c.com dcpu16 spec.
