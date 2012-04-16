@@ -135,7 +135,6 @@ func (c *DCPU16) standard(opcode uint16) {
 	var (
 		a, b       *uint16
 		aval, bval uint16
-		v          int
 	)
 
 	// fetch and evaluate a, then b
@@ -152,31 +151,33 @@ func (c *DCPU16) standard(opcode uint16) {
 	case 0x1: // SET a, b - sets a to b
 		*a = *b
 	case 0x2: // ADD a, b - sets a to a+b, sets O to 0x0001 if there's an overflow, 0x0 otherwise
-		v = int(*a) + int(*b)
-		if v > math.MaxInt16 {
+		v := uint32(*a) + uint32(*b)
+		if v > math.MaxUint16 {
 			c.overflow = 1
 		} else {
 			c.overflow = 0
 		}
 		*a = uint16(v)
 	case 0x3: // SUB a, b - sets a to a-b, sets O to 0xffff if there's an underflow, 0x0 otherwise
-		v = int(*a) - int(*b)
-		if v < math.MinInt16 {
-			c.overflow = 1
+		v := int32(*a) - int32(*b)
+		if v < 0 {
+			c.overflow = 0xffff
 		} else {
 			c.overflow = 0
 		}
 		*a = uint16(v)
 	case 0x4: // MUL a, b - sets a to a*b, sets O to ((a*b)>>16)&0xffff
-		c.overflow = uint16(((int(*a) * int(*b)) >> 16) & 0xffff)
-		*a *= *b
+		v := int32(*a) * int32(*b)
+		c.overflow = uint16(v >> 16)
+		*a = uint16(v)
 	case 0x5: // DIV a, b - sets a to a/b, sets O to ((a<<16)/b)&0xffff. if b==0, sets a and O to 0 instead.
-		if *b == 0 {
+		if *b != 0 {
+			v := int32(*a) / int32(*b)
+			c.overflow = uint16(v >> 16)
+			*a = uint16(v)
+		} else {
 			*a = 0
 			c.overflow = 0
-		} else {
-			c.overflow = uint16(((int(*a) << 16) / int(*b)) & 0xffff)
-			*a /= *b
 		}
 	case 0x6: // MOD a, b - sets a to a%b. if b==0, sets a to 0 instead.
 		if *b == 0 {
@@ -185,11 +186,11 @@ func (c *DCPU16) standard(opcode uint16) {
 			*a %= *b
 		}
 	case 0x7: // SHL a, b - sets a to a<<b, sets O to ((a<<b)>>16)&0xffff
+		c.overflow = uint16(((uint32(*a) << *b) >> 16))
 		*a <<= *b
-		c.overflow = ((*a << *b) >> 16) & 0x0ffff
 	case 0x8: // SHR a, b - sets a to a>>b, sets O to ((a<<16)>>b)&0xffff
+		c.overflow = uint16(((uint32(*a) << 16) >> *b))
 		*a >>= *b
-		c.overflow = ((*a << *b) >> 16) & 0x0ffff
 	case 0x9: // AND a, b - sets a to a&b
 		*a &= *b
 	case 0xa: // BOR a, b - sets a to a|b
