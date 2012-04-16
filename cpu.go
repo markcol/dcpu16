@@ -10,6 +10,32 @@ const (
 	LASTADDR = 0xffff  // Last valid address
 )
 
+// OPCODE constants
+const (
+	_ = iota
+	SET
+	ADD
+	SUB
+	MUL
+	DIV
+	MOD
+	SHL
+	SHR
+	AND
+	BOR
+	XOR
+	IFE
+	IFN
+	IFG
+	IFB
+)
+
+// Extended OPCODE constants
+const (
+	_ = iota
+	JSR
+)
+
 // Register offsets
 const (
 	A = iota
@@ -20,7 +46,9 @@ const (
 	Z
 	I
 	J
-	// The following registers are exported in the Register call
+	// The following registers are exported by the Register call but are not
+	// really registers as defined by the specification. (e.g., they are not
+	// used by register-relative addressing, etc.
 	O
 	SP
 	PC
@@ -32,7 +60,7 @@ const (
 // The CPU can be run in a separate goroutine. The state access functions
 // (Read, Write, Registers, etc.) will only be executed at instruction boundaries,
 // ensuring that the state returned is consistent and atomic with respect to
-// the virtual CPU.
+// the virtual CPU instruction cycle.
 type DCPU16 struct {
 	register [8]uint16
 	memory   [RAMSIZE]uint16
@@ -131,13 +159,16 @@ func (c *DCPU16) step() {
 }
 
 // standard executes single a (non-extended) instruction opcode.
+//
+// The bit-level layout of a basic instructon (with lsb last) has the form:
+// bbbbbbaaaaaaoooo. Where o, a, b are opcode, a-value, b-value respectively.
 func (c *DCPU16) standard(opcode uint16) {
 	var (
 		a, b       *uint16
 		aval, bval uint16
 	)
 
-	// fetch and evaluate a, then b
+	//fetch and evaluate a, then b
 	a = c.lea((opcode&0x3f0)>>4, &aval)
 	b = c.lea((opcode&0xfc00)>>10, &bval)
 
@@ -148,9 +179,9 @@ func (c *DCPU16) standard(opcode uint16) {
 	}
 
 	switch opcode & 0x0f {
-	case 0x1: // SET a, b - sets a to b
+	case SET: // sets a to b
 		*a = *b
-	case 0x2: // ADD a, b - sets a to a+b, sets O to 0x0001 if there's an overflow, 0x0 otherwise
+	case ADD: // sets a to a+b, sets O to 0x0001 if there's an overflow, 0x0 otherwise
 		v := uint32(*a) + uint32(*b)
 		if v > math.MaxUint16 {
 			c.overflow = 1
@@ -158,7 +189,7 @@ func (c *DCPU16) standard(opcode uint16) {
 			c.overflow = 0
 		}
 		*a = uint16(v)
-	case 0x3: // SUB a, b - sets a to a-b, sets O to 0xffff if there's an underflow, 0x0 otherwise
+	case SUB: // sets a to a-b, sets O to 0xffff if there's an underflow, 0x0 otherwise
 		v := int32(*a) - int32(*b)
 		if v < 0 {
 			c.overflow = 0xffff
@@ -166,11 +197,11 @@ func (c *DCPU16) standard(opcode uint16) {
 			c.overflow = 0
 		}
 		*a = uint16(v)
-	case 0x4: // MUL a, b - sets a to a*b, sets O to ((a*b)>>16)&0xffff
+	case MUL: // sets a to a*b, sets O to ((a*b)>>16)&0xffff
 		v := int32(*a) * int32(*b)
 		c.overflow = uint16(v >> 16)
 		*a = uint16(v)
-	case 0x5: // DIV a, b - sets a to a/b, sets O to ((a<<16)/b)&0xffff. if b==0, sets a and O to 0 instead.
+	case DIV: // sets a to a/b, sets O to ((a<<16)/b)&0xffff. if b==0, sets a and O to 0 instead.
 		if *b != 0 {
 			v := int32(*a) / int32(*b)
 			c.overflow = uint16(v >> 16)
@@ -179,37 +210,37 @@ func (c *DCPU16) standard(opcode uint16) {
 			*a = 0
 			c.overflow = 0
 		}
-	case 0x6: // MOD a, b - sets a to a%b. if b==0, sets a to 0 instead.
+	case MOD: // sets a to a%b. if b==0, sets a to 0 instead.
 		if *b == 0 {
 			*a = 0
 		} else {
 			*a %= *b
 		}
-	case 0x7: // SHL a, b - sets a to a<<b, sets O to ((a<<b)>>16)&0xffff
+	case SHL: // sets a to a<<b, sets O to ((a<<b)>>16)&0xffff
 		c.overflow = uint16(((uint32(*a) << *b) >> 16))
 		*a <<= *b
-	case 0x8: // SHR a, b - sets a to a>>b, sets O to ((a<<16)>>b)&0xffff
+	case SHR: // sets a to a>>b, sets O to ((a<<16)>>b)&0xffff
 		c.overflow = uint16(((uint32(*a) << 16) >> *b))
 		*a >>= *b
-	case 0x9: // AND a, b - sets a to a&b
+	case AND: // sets a to a&b
 		*a &= *b
-	case 0xa: // BOR a, b - sets a to a|b
+	case BOR: // sets a to a|b
 		*a |= *b
-	case 0xb: // XOR a, b - sets a to a^b
+	case XOR: // sets a to a^b
 		*a ^= *b
-	case 0xc: // IFE a, b - performs next instruction only if a==b
+	case IFE: // performs next instruction only if a==b
 		if !(*a == *b) {
 			c.nextWord()
 		}
-	case 0xd: // IFN a, b - performs next instruction only if a!=b
+	case IFN: // performs next instruction only if a!=b
 		if !(*a != *b) {
 			c.nextWord()
 		}
-	case 0xe: // IFG a, b - performs next instruction only if a>b
+	case IFG: // performs next instruction only if a>b
 		if !(*a > *b) {
 			c.nextWord()
 		}
-	case 0xf: // IFB a, b - performs next instruction only if (a&b)!=0
+	case IFB: // performs next instruction only if (a&b)!=0
 		if !((*a & *b) != 0) {
 			c.nextWord()
 		}
@@ -217,6 +248,10 @@ func (c *DCPU16) standard(opcode uint16) {
 }
 
 // extnded executes a single extended instruction opcode.
+//
+// The bit-level layout of an extended instructon (with lsb last) has the form:
+// aaaaaaoooooo0000. Where o, a are opcode, and a-value. 0 is the literal
+// value 0.
 func (c *DCPU16) extended(opcode uint16) {
 	var (
 		a    *uint16
@@ -225,7 +260,7 @@ func (c *DCPU16) extended(opcode uint16) {
 
 	a = c.lea((opcode&0xfc00)>>10, &aval)
 	switch (opcode & 0x3f) >> 4 {
-	case 0x1: // JSR a
+	case JSR: // push current PC onto stack, set PC = a
 		c.pushValue(c.pc)
 		c.pc = *a
 	default:

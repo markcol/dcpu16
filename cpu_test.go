@@ -5,26 +5,6 @@ import (
 	"testing"
 )
 
-// OPCODE constants for simpler testing using makeOpcode()
-const (
-	_ = iota
-	SET
-	ADD
-	SUB
-	MUL
-	DIV
-	MOD
-	SHL
-	SHR
-	AND
-	BOR
-	XOR
-	IFE
-	IFN
-	IFG
-	IFB
-)
-
 func TestWriteAndRead(t *testing.T) {
 	c := new(DCPU16)
 	c.Write(0, []uint16{0x7c01, 0x0030, 0x7de1})
