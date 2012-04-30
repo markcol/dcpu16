@@ -267,7 +267,7 @@ func TestMUL(t *testing.T) {
 	c := new(DCPU16)
 	c.memory[0] = makeOpcode(MUL, 0, 1) // MUL A,B
 
-	for i := 0x7f3f; i > 0; i -= 5 {
+	for i := 0x20; i > 0; i -= 5 {
 		c.pc = 0
 		c.register[A] = 0x7f3f
 		c.register[B] = uint16(i)
@@ -287,7 +287,7 @@ func TestDIV(t *testing.T) {
 	c := new(DCPU16)
 	c.memory[0] = makeOpcode(DIV, 0, 1) // DIV A,B
 
-	for i := 0x7f3f; i > 0; i -= 5 {
+	for i := 0x20; i > 0; i -= 5 {
 		c.pc = 0
 		c.register[A] = 0x7f3f
 		c.register[B] = uint16(i)
@@ -318,7 +318,7 @@ func TestMOD(t *testing.T) {
 	c.step()
 	checkRegisters(e, c, t, "MOD A,B (A=0xFF, B=0)")
 
-	for i := 1; i < 256; i++ {
+	for i := 1; i < 10; i++ {
 		c.pc = 0
 		c.register[A] = 0xFF
 		c.register[B] = uint16(i)
@@ -609,6 +609,30 @@ func TestIFB(t *testing.T) {
 	e := c.Registers()
 	e[PC] = 1
 	e[TICK] = 2
+	c.step()
+	checkRegisters(e, c, t, "IFB A&B != 0")
+
+	// check that if A&B == 0 that the pc is beyond next instruction, and extra cycle spent
+	c.register[B] = 0
+	c.pc = 0
+	e[B] = c.register[B]
+	e[PC] = 2
+	e[TICK] = c.tick + 3
+	c.step()
+	checkRegisters(e, c, t, "IFB A&B == 0")
+}
+
+func TestTickOverflow(t *testing.T) {
+	c := new(DCPU16)
+
+	c.tick = 0xfffe
+	// check that if A&B != 0 that pc is at next instruction
+	c.memory[0] = makeOpcode(IFB, 0, 1) // IFB A, B
+	c.register[A] = 0x7f3f
+	c.register[B] = c.register[A]
+	e := c.Registers()
+	e[PC] = 1
+	e[TICK] = 0
 	c.step()
 	checkRegisters(e, c, t, "IFB A&B != 0")
 

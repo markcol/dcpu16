@@ -9,3 +9,5 @@ ensure correctness.
 The virtual machine is implemented as an object so that several can be
 instantiated and run in separate goroutines. 
 
+The virtual machine is cycle-time accurate. It is currently running at 1 GHz, 
+so the tests complete in a reasonable timeframe.

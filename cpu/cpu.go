@@ -3,16 +3,19 @@ package cpu
 import (
 	"math"
 	"sync"
+	"time"
 )
 
 const (
-	RAMSIZE  = 0x10000 // 65535 words of RAM
-	LASTADDR = 0xffff  // Last valid address
+	RAMSIZE              = 0x10000                 // 65535 words of RAM
+	LASTADDR             = 0xffff                  // Last valid address
+	CYCLERATE            = 1000                    // instructions/second
+	INSTRUCTION_DURATION = time.Second / CYCLERATE // duration of an instruction
 )
 
 // OPCODE constants
 const (
-	_ = iota
+	EXTENDED = iota
 	SET
 	ADD
 	SUB
@@ -54,6 +57,15 @@ const (
 	PC
 	TICK
 	regSize = iota // number of exported registers
+)
+
+// Various constants to simplify coding
+const (
+	OPC_MASK     = 0x000f // normal instruction opcode mask (lower 4 bits of opcode)
+	OP1_MASK     = 0x03F0 // first operand mask (a in normal instruction)
+	OP2_MASK     = 0xfc00 // second operand mask (b in normal, a in extended instruction)
+	OPERAND_MASK = 0x3f   // lower 6-bits of word
+
 )
 
 // DCPU16 is a single virtual CPU that conforms to the 0x10c.com dcpu16 spec.
@@ -109,8 +121,8 @@ func (c *DCPU16) Registers() []uint16 {
 	r := make([]uint16, regSize)
 	copy(r, c.register[:])
 	r[O] = c.overflow
-	r[PC] = c.pc
 	r[SP] = c.sp
+	r[PC] = c.pc
 	r[TICK] = c.tick
 	return r
 }
@@ -130,47 +142,58 @@ func (c *DCPU16) Run() {
 // step executes a single machine instruction at [pc], updating all registers,
 // memory, and cycle counts.
 func (c *DCPU16) step() {
-	var opcode uint16
+	var (
+		opcode uint16
+		wait   time.Duration
+	)
 
 	// hold lock during entire instruction cycle
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	// read the opcode
+	start := time.Now()
+	oldtick := c.tick
+
 	opcode = c.nextWord()
+	c.execute(opcode)
 
-	// check for extended opcode
-	if (opcode & 0x0f) == 0 {
-		c.extended(opcode)
-	} else {
-		c.standard(opcode)
-	}
-
-	// calculate the cycle count. NB: count is 1 less then spec, since nextWork
-	// adds 1 to count during the opcode fetch.
-	switch opcode & 0x0f {
-	case 0x5, 0x6:
+	// Calculate the cycle count. Note: nextWord increments tick count.
+	switch opcode & OPC_MASK {
+	case DIV, MOD:
 		c.tick += 2
-	case 0x1, 0x9, 0xa, 0xb:
+	case SET, AND, BOR, XOR:
 		break
 	default:
 		c.tick++
 	}
+	if c.tick < oldtick {
+		wait = time.Duration(c.tick + (0xffff - oldtick) + 1)
+	} else {
+		wait = time.Duration(c.tick - oldtick)
+	}
+
+	// Calculate the amount of time left before end of instruction cycle, and
+	// sleep if there is time left.
+	end := time.Now()
+	wait = wait*INSTRUCTION_DURATION - end.Sub(start)
+	if wait > 0 {
+		time.Sleep(wait)
+	}
 }
 
-// standard executes single a (non-extended) instruction opcode.
+// execute executes single a standard or extended instruction.
 //
 // The bit-level layout of a basic instructon (with lsb last) has the form:
 // bbbbbbaaaaaaoooo. Where o, a, b are opcode, a-value, b-value respectively.
-func (c *DCPU16) standard(opcode uint16) {
+func (c *DCPU16) execute(opcode uint16) {
 	var (
 		a, b       *uint16
 		aval, bval uint16
 	)
 
 	//fetch and evaluate a, then b
-	a = c.lea((opcode&0x3f0)>>4, &aval)
-	b = c.lea((opcode&0xfc00)>>10, &bval)
+	a = c.lea((opcode&OP1_MASK)>>4, &aval)
+	b = c.lea((opcode&OP2_MASK)>>10, &bval)
 
 	// "If any instruction tries to assign a literal value, the assignment
 	// fails silently. Other than that, the instruction behaves as normal."
@@ -178,7 +201,16 @@ func (c *DCPU16) standard(opcode uint16) {
 		return
 	}
 
-	switch opcode & 0x0f {
+	switch opcode & OPC_MASK {
+	case EXTENDED: // extended opcode
+		switch *a { // *a = extended opcode, *b = operand
+		case JSR: // push current PC onto stack, set PC = a
+			c.pushValue(c.pc)
+			c.pc = *b
+		default:
+			// panic("Invalid extended opcode")
+		}
+
 	case SET: // sets a to b
 		*a = *b
 	case ADD: // sets a to a+b, sets O to 0x0001 if there's an overflow, 0x0 otherwise
@@ -247,33 +279,13 @@ func (c *DCPU16) standard(opcode uint16) {
 	}
 }
 
-// extnded executes a single extended instruction opcode.
-//
-// The bit-level layout of an extended instructon (with lsb last) has the form:
-// aaaaaaoooooo0000. Where o, a are opcode, and a-value. 0 is the literal
-// value 0.
-func (c *DCPU16) extended(opcode uint16) {
-	var (
-		a    *uint16
-		aval uint16
-	)
-
-	a = c.lea((opcode&0xfc00)>>10, &aval)
-	switch (opcode & 0x3f) >> 4 {
-	case JSR: // push current PC onto stack, set PC = a
-		c.pushValue(c.pc)
-		c.pc = *a
-	default:
-		panic("Invalid extended opcode")
-	}
-}
-
-// lea returns the address of the value given by the addr operand. cval
+// lea (Load Effective Address) returns the address of the value given by the addr operand. cval
 // provides a pointer to the location to store constant values.
 //
 // Note this function returns a host pointer to guest memory, register, or
 // a host-provided constant buffer.
 func (c *DCPU16) lea(addr uint16, cval *uint16) *uint16 {
+	addr &= OPERAND_MASK
 	switch {
 	case addr <= 0x07: // register
 		return &c.register[addr]
@@ -301,11 +313,12 @@ func (c *DCPU16) lea(addr uint16, cval *uint16) *uint16 {
 		c.tick++
 		*cval = c.nextWord()
 		return cval
-	case addr <= 0x3f: // literal value 0x00-0x1f (literal)
+	case addr <= OPERAND_MASK: // literal value 0x00-0x1f (literal)
 		*cval = addr - 0x20
 		return cval
 	}
-	panic("Invalid address specification")
+	// Should never happen, since value is limited at entry.
+	panic("Invalid addressing mode.")
 }
 
 // nextWord returns the value of the memory at [pc] and increments the pc.
@@ -320,8 +333,7 @@ func (c *DCPU16) nextWord() (v uint16) {
 // Note: returns a host pointer to the guest memory.
 func (c *DCPU16) push() (v *uint16) {
 	c.sp--
-	v = &c.memory[c.sp]
-	return
+	return &c.memory[c.sp]
 }
 
 // pushValue pushes the word val onto the stack.
