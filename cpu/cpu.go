@@ -11,12 +11,12 @@ const (
 	LASTADDR             = 0xffff                  // Last valid address
 	CYCLERATE            = 1000                    // instructions/second
 	INSTRUCTION_DURATION = time.Second / CYCLERATE // duration of an instruction
-	MAX_INTQUEUE = 256
+	MAX_INTQUEUE         = 256
 )
 
 // OPCODE constants
 const (
-	EXT = iota // Extended Opcode pseudo opcode 
+	EXT = iota // Extended Opcode pseudo opcode
 	SET
 	ADD
 	SUB
@@ -87,21 +87,21 @@ const (
 	// really registers as defined by the specification. (e.g., they are not
 	// used by register-relative addressing, etc.
 	PC             // Program Counter
-	SP             // Stack Pointern
-	EX             // Overflow Register 
+	SP             // Stack Pointer
+	EX             // Overflow Register
 	IA             // Interrupt Address Register
 	TICK           // tick counter
-	IQ             // Interrupt Queueing flag
+	IQ             // Interrupt Queuing flag
 	regSize = iota // number of exported registers
 )
 
 // Various constants to simplify coding
 const (
-	OPCODE_MASK  = 0x001f // normal instruction opcode mask (lower 4 bits of opcode)
-	ARGA_MASK     = 0xFC00 // first operand mask: a
-	ARGB_MASK     = 0x03E0 // second operand mask: b 
-	ARGA_SHIFT = 10
-	ARGB_SHIFT = 5
+	OPCODE_MASK = 0x001f // normal instruction opcode mask
+	ARGA_MASK   = 0xFC00 // first operand mask: a
+	ARGB_MASK   = 0x03E0 // second operand mask: b
+	ARGA_SHIFT  = 10
+	ARGB_SHIFT  = 5
 )
 
 // DCPU16 is a single virtual CPU that conforms to the 0x10c.com dcpu16 spec.
@@ -110,24 +110,23 @@ const (
 // ensuring that the state returned is consistent and atomic with respect to
 // the virtual CPU instruction cycle.
 type DCPU16 struct {
-	register [8]uint16
-	memory   [RAMSIZE]uint16
-	pc       uint16
-	sp       uint16
-	ex       uint16
-	ia       uint16
-	tick     uint16
+	register    [8]uint16
+	memory      [RAMSIZE]uint16
+	pc          uint16
+	sp          uint16
+	ex          uint16
+	ia          uint16
+	tick        uint16
 	intQueueing bool // true if interrupts are to be queued
-	intQueue []uint16
-	// temporary buffers used to store literal values for lea
-	tmpa uint16
-	tmpb uint16
-	mutex    sync.Mutex
+	intQueue    []uint16
+	tmpa        uint16
+	tmpb        uint16
+	mutex       sync.Mutex
 }
 
 func NewDCPU16() *DCPU16 {
 	return &DCPU16{
-		intQueue: make([]uint16, 0, MAX_INTQUEUE),
+		intQueue:    make([]uint16, 0, MAX_INTQUEUE),
 		intQueueing: false,
 	}
 }
@@ -145,7 +144,7 @@ func (c *DCPU16) Write(addr uint16, data []uint16) {
 
 // Read reads (at most) len words from memory starting at the given address and
 // returns them to the caller. The number of words returned may be less than
-// requested if address+len exeeds addressable memory.
+// requested if address + len exceeds addressable memory.
 func (c *DCPU16) Read(addr uint16, l int) []uint16 {
 	// wait for an instruction boundary
 	c.mutex.Lock()
@@ -160,7 +159,7 @@ func (c *DCPU16) Read(addr uint16, l int) []uint16 {
 }
 
 // Registers returns a slice of words with the values of the current CPU
-// registers and pseudo-registers. The registers are stored in the following 
+// registers and pseudo-registers. The registers are stored in the following
 // order: a, b, c, x, y, z, i, j, pc, sp, ex, ia, tick, iq.
 func (c *DCPU16) Registers() []uint16 {
 	// wait for an instruction boundary
@@ -197,7 +196,7 @@ func (c *DCPU16) Run() {
 // step executes a single machine instruction at [pc], updating all registers,
 // memory, and cycle counts.
 func (c *DCPU16) step() {
-	var wait   time.Duration
+	var wait time.Duration
 
 	// hold lock during entire instruction cycle
 	c.mutex.Lock()
@@ -209,10 +208,10 @@ func (c *DCPU16) step() {
 	// execute the actual instruction
 	c.execute()
 
-	// process a software interrupt if queueing disabled and and one is queued 
+	// process a software interrupt if queuing disabled and and one is queued
 	if !c.intQueueing && len(c.intQueue) > 0 {
 		a := c.intQueue[0]
-		c.intQueue=c.intQueue[1:]
+		c.intQueue = c.intQueue[1:]
 		if c.ia != 0 {
 			c.intQueueing = true
 			c.pushValue(c.pc)
@@ -240,7 +239,7 @@ func (c *DCPU16) step() {
 
 // execute executes single a DCPU16 machine instruction.
 //
-// The bit-level layout of a basic instructon (with lsb on right) has the form:
+// The bit-level layout of a basic instruction (with LSB on right) has the form:
 // bbbbbbaaaaaaoooo. Where o, a, b are opcode, a-value, b-value respectively.
 func (c *DCPU16) execute() {
 	opcode := c.nextWord()
@@ -255,7 +254,8 @@ func (c *DCPU16) execute() {
 
 	switch opcode & OPCODE_MASK {
 	case EXT: // extended opcode
-		// at entry, *a = extended opcode, *b = operand, reassign them for consistency with spec
+		// at entry, *a = extended opcode, *b = operand
+		// reassign them for consistency with spec
 		opcode = *a
 		*a = *b
 		switch opcode {
@@ -264,7 +264,8 @@ func (c *DCPU16) execute() {
 			c.pc = *a
 			c.tick += 2
 		case INT: // trigger a software interrupt with message A
-			// add interrupt to queue, process interrupt queue before next instruction (maybe)
+			// Add interrupt to queue, process interrupt queue before next
+			// instruction (if IAQ is zero).
 			if len(c.intQueue) < MAX_INTQUEUE {
 				c.intQueue = append(c.intQueue, *a)
 			} else {
@@ -275,12 +276,12 @@ func (c *DCPU16) execute() {
 			*a = c.ia
 		case IAS: // sets IA to A
 			c.ia = *a
-		case RFI: // return from interupt: disable interrupt queueing, pop A then PC from stack
-			c.intQueueing = false 
+		case RFI: // return from interrupt: disable interrupt queuing, pop A, PC
+			c.intQueueing = false
 			c.register[A] = *c.pop()
 			c.pc = *c.pop()
 			c.tick += 2
-		case IAQ: // if A is nonzero, interrtupts will be queued, otherwise triggered
+		case IAQ: // if A is nonzero, interrupts will be queued, otherwise triggered
 			c.intQueueing = (*a != 0)
 			c.tick++
 		case HWN: // sets A to number of connected hardware devices
@@ -291,7 +292,7 @@ func (c *DCPU16) execute() {
 			c.tick += 3
 		case HWI: // sends an interrupt to hardware A
 			c.handleHardwareInterrupt(*a)
-			c.tick +=3
+			c.tick += 3
 		}
 
 	case SET: // sets B to A
@@ -306,19 +307,19 @@ func (c *DCPU16) execute() {
 		c.ex = uint16(v >> 16)
 		*b = uint16(v)
 		c.tick++
-	case MUL,MLI: // sets B to B*A, sets EX to ((B*A)>>16)&0xffff
+	case MUL, MLI: // sets B to B*A, sets EX to ((B*A)>>16)&0xffff
 		var v int32
 		if opcode == MUL {
 			// unsigned
 			v = int32(uint32(*b) * uint32(*a))
-		}else{
+		} else {
 			// signed
 			v = int32(*b) * int32(*a)
 		}
 		c.ex = uint16(v >> 16)
 		*b = uint16(v)
 		c.tick++
-	case DIV,DVI: // sets B to B/A, sets EX ((B<<16)>>A)&0xffff
+	case DIV, DVI: // sets B to B/A, sets EX ((B<<16)>>A)&0xffff
 		var v int32
 		if *a == 0 {
 			*b = 0
@@ -326,16 +327,16 @@ func (c *DCPU16) execute() {
 		} else {
 			if opcode == DIV {
 				// unsigned division
-				v = int32(uint32(*b)/uint32(*a))
+				v = int32(uint32(*b) / uint32(*a))
 			} else {
 				// signed division
-				v = int32(*b)/int32(*a)
+				v = int32(*b) / int32(*a)
 			}
 			c.ex = uint16(v >> 16)
 			*b = uint16(v)
 		}
-		c.tick+=2
-	case MOD,MDI: // sets B to B%A. if A==0, sets B to 0 instead.
+		c.tick += 2
+	case MOD, MDI: // sets B to B%A. if A==0, sets B to 0 instead.
 		if *a == 0 {
 			*b = 0
 		} else {
@@ -413,7 +414,7 @@ func (c *DCPU16) execute() {
 			c.ex = 0
 		}
 		*b = uint16(v)
-		c.tick+=2
+		c.tick += 2
 	case SBX:
 		v := int32(*b) - int32(*a) + int32(c.ex)
 		if v < math.MinInt16 {
@@ -422,8 +423,8 @@ func (c *DCPU16) execute() {
 			c.ex = 0
 		}
 		*b = uint16(v)
-		c.tick+=2
-	case STI,STD: // sets B to A, then increases/decreases I and J by 1
+		c.tick += 2
+	case STI, STD: // sets B to A, then increases / decreases I and J by 1
 		*b = *a
 		if opcode == STI {
 			c.register[I]++
@@ -437,10 +438,12 @@ func (c *DCPU16) execute() {
 	return
 }
 
-// lea (Load Effective Address) returns the address of the value given by the addr operand. tmp
-// provides a pointer to the location to store constant values.
+// lea (Load Effective Address) returns the address of the value given by the
+// addr operand. tmp provides a pointer to the location to store constant
+// values.
 //
-// Note this function returns a host pointer to guest memory, register, or constant buffer.
+// Note this function returns a host pointer to guest memory, register, or
+// constant buffer.
 func (c *DCPU16) lea(addr uint16, tmp *uint16) *uint16 {
 	switch {
 	case addr <= 0x07: // register
@@ -523,20 +526,20 @@ func (c *DCPU16) pop() (v *uint16) {
 // the HWN, HWQ and HWI instructions.
 //
 // Interrupts sent to hardware can't contain messages, can take additional cycles,
-// and can read or modify any registers or memory adresses on the DCPU-16. This
+// and can read or modify any registers or memory addresses on the DCPU-16. This
 // behavior changes per hardware device and is described in the hardware's
 // documentation.
-// 
+//
 // Hardware must NOT start modifying registers or ram on the DCPU-16 before at
 // least one HWI call has been made to the hardware.
-// 
+//
 // The DPCU-16 does not support hot swapping hardware. The behavior of connecting
 // or disconnecting hardware while the DCPU-16 is running is undefined.
 
-// hardwareQuery queries the hardware attached to the CPU and sets 
+// hardwareQuery queries the hardware attached to the CPU and sets
 // the A, B, C, X, Y registers to reflect the hardware device connected at
-// port A. A+(B<<16) is a 32-bit word identifying the hardware ID. C is 
-// the hardware version. X+(Y<<16) is a 32-bit word identifying the 
+// port A. A+(B<<16) is a 32-bit word identifying the hardware ID. C is
+// the hardware version. X+(Y<<16) is a 32-bit word identifying the
 // manufacturer
 func (c *DCPU16) hardwareQuery(hwindex uint16) {
 	return

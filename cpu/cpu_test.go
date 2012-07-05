@@ -7,7 +7,7 @@ import (
 
 const (
 	PUSH = 0x18
-	POP = 0x18
+	POP  = 0x18
 	PEEK = 0x19
 	PICK = 0x1a4
 )
@@ -145,7 +145,7 @@ func TestSetAllShortLiterals(t *testing.T) {
 		e := c.Registers()
 		e[PC] = 1
 		e[TICK] = c.tick + 1
-		e[A] = uint16(i)-1
+		e[A] = uint16(i) - 1
 		c.step()
 		checkRegisters(e, c, t)
 	}
@@ -175,7 +175,7 @@ func TestPeek(t *testing.T) {
 
 func TestPushPop(t *testing.T) {
 	c := new(DCPU16)
-	c.memory[0] = makeOpcode(SET, PUSH, 0) // SET PUSH, A
+	c.memory[0] = makeOpcode(SET, PUSH, 0)   // SET PUSH, A
 	c.memory[1] = makeOpcode(SET, 0x01, POP) // SET B, POP
 	c.register[A] = 0x7f3f
 	e := c.Registers()
@@ -686,8 +686,8 @@ func makeOpcode(o, b, a int) uint16 {
 	if a < 0 || a > 0x3f {
 		panic("Invalid a address mode found in test case")
 	}
-	if b < 0 || b  > 0x1f {
+	if b < 0 || b > 0x1f {
 		panic("Invalid b address mode found in test case")
 	}
-	return uint16((a<<ARGA_SHIFT)&ARGA_MASK | (b<<ARGB_SHIFT)&ARGB_MASK | (o&OPCODE_MASK))
+	return uint16((a<<ARGA_SHIFT)&ARGA_MASK | (b<<ARGB_SHIFT)&ARGB_MASK | (o & OPCODE_MASK))
 }

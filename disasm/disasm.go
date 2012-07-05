@@ -3,6 +3,7 @@ package disasm
 import (
 	"fmt"
 	"io"
+	"github.com/markcol/dcpu16/cpu"
 )
 
 var (
