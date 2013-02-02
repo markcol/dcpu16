@@ -4,7 +4,7 @@ DCPU-16 Vitual Machine tools written in Go
 [![Build Status](https://travis-ci.org/markcol/dcpu16.png?branch=master)](https://travis-ci.org/markcol/dcpu16)
 
 This is an implementation of the
-[DCPU-16 specification](http://0x10c.com/doc/dcpu-16.txt) written in Go. The
+[DCPU-16 specification](http://dcpu.com/dcpu-16/) written in Go. The
 project current contains a working CPU implementation and a number of tests to
 ensure correctness.
 
