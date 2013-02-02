@@ -302,13 +302,13 @@ func TestDIV(t *testing.T) {
 
 	for i := 0x20; i > 0; i -= 5 {
 		c.pc = 0
-		c.register[A] = 0x7f3f
-		c.register[B] = uint16(i)
+		c.register[B] = 0x7f3f
+		c.register[A] = uint16(i)
 		e := c.Registers()
 		ov := uint32(c.register[A]) / uint32(c.register[B])
+		e[B] = c.register[B]
 		e[A] = uint16(ov)
 		e[EX] = uint16(ov >> 16)
-		e[B] = c.register[B]
 		e[PC] = 1
 		e[TICK] = c.tick + 3
 		c.step()
