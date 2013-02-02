@@ -332,7 +332,7 @@ func (c *DCPU16) execute() {
 				// signed division
 				v = int32(*b) / int32(*a)
 			}
-			c.ex = uint16(v >> 16)
+			c.ex = uint16(((*b)<<16) >> *a)
 			*b = uint16(v)
 		}
 		c.tick += 2
