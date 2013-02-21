@@ -1,4 +1,4 @@
-package dcpu16
+package cpu
 
 import (
 	"fmt"

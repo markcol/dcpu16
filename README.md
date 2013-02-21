@@ -1,15 +1,17 @@
 DCPU-16 Vitual Machine tools written in Go
 ==========================================
-
 [![Build Status](https://travis-ci.org/markcol/dcpu16.png?branch=master)](https://travis-ci.org/markcol/dcpu16)
 
-This is an implementation of the
-[DCPU-16 specification](http://dcpu.com/dcpu-16/) written in Go. The
-project current contains a working CPU implementation and a number of tests to
-ensure correctness.
+This is a set of tools for creating, test and running a virtual
+machine based on the [DCPU-16 specification](http://dcpu.com/dcpu-16/)
+written in Go. The project contains:
 
-The virtual machine is implemented as an object so that several can be
-instantiated and run in separate goroutines.
+   * A cycle-accurate CPU
+   * Assembler
+   * Disassmbler
+   * Virtual machine
 
-The virtual machine is cycle-time accurate. It is currently running at 1 GHz,
-so the tests complete in a reasonable timeframe.
+Each component has a number of tests to ensure functional correctness.
+
+The virtual machine is overclocked to 1 GHz by default only so that
+tests complete in a reasonable amount of time.

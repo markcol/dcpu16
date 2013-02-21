@@ -1,3 +1,21 @@
 language: go
+
+install:
+  - mkdir -p $GOPATH/src/github.com/markcol/dcpu16
+  - mv * $GOPATH/src/github.com/markcol/dcpu16
+  - go get github.com/markcol/dcpu16/cpu
+  - go get github.com/markcol/dcpu16/asm
+  - go get github.com/markcol/dcpu16/disasm
+
 script:
+  - cd $GOPATH/src/github.com/markcol/dcpu16
+  - pushd cpu
   - go test -v
+  - cd ../asm
+  - go test -v
+  - cd ../disasm
+  - go test -v
+  - popd
+
+notifications:
+  email: false
